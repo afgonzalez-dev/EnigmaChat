@@ -64,3 +64,58 @@ This project provides a REST API for cryptographic operations using Rust and Roc
         "message": "your_decrypted_message"
     }
     ```
+
+## Requirements
+- Rust 1.76 or later
+- cargo
+
+## Setup
+
+### 1. Clone the repository
+gh repo clone afgonzalez-dev/EnigmaChat
+cd EnigmaChat
+### 2. cargo build
+
+## Running the Server
+``` cargo run ```
+
+## Create User Key
+``` curl -X POST http://localhost:8000/create_user_key ```
+
+## Encrypt Message
+``` curl -X POST http://localhost:8000/encrypt -H "Content-Type: application/json" -d '{
+  "nonce": "123456789012",
+  "message": "Hello, World!",
+  "other_public_key": [48, 165, ...],
+  "user_secret": [106, 54, ...]
+}' ```
+
+## Decrypt Message
+``` curl -X POST http://localhost:8000/decrypt -H "Content-Type: application/json" -d '{
+  "ciphertext": [99, 34, ...],
+  "other_public_key": [48, 165, ...],
+  "user_secret": [106, 54, ...],
+  "nonce": "123456789012"
+}' ```
+
+Project Structure
+```
+enigmachat/
+├── Cargo.toml
+├── src/
+│   ├── main.rs
+│   ├── api/
+│   │   ├── mod.rs
+│   │   ├── user_key.rs
+│   │   ├── encrypt.rs
+│   │   ├── decrypt.rs
+│   ├── crypto/
+│   │   ├── mod.rs
+│   │   ├── key_management.rs
+│   │   ├── encryption.rs
+│   │   ├── decryption.rs
+│   └── catchers/
+│       ├── mod.rs
+│       ├── validation.rs
+└── src/error.rs
+```
