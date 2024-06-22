@@ -3,10 +3,13 @@ extern crate rocket;
 
 use aes_gcm::aead::{generic_array::GenericArray, Aead, KeyInit, OsRng};
 use aes_gcm::{Aes256Gcm, Nonce};
-use hex;
-use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
-use x25519_dalek::{EphemeralSecret, PublicKey, StaticSecret};
+
+use rocket::response::status::BadRequest;
+use rocket::serde::json::Json;
+use validator::{Validate, ValidationError};
+use validator_derive::Validate;
+use x25519_dalek::{PublicKey, StaticSecret};
 
 #[derive(Serialize)]
 struct UserKeyResponse {
@@ -14,14 +17,15 @@ struct UserKeyResponse {
     user_secret: Vec<u8>,
 }
 
-#[derive(Deserialize)]
-struct EncryptRequest {
+#[derive(Debug, Validate, Serialize, Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct EncryptRequest {
+    #[validate(length(equal = 1))]
+    nonce: String,
     message: String,
     other_public_key: Vec<u8>,
     user_secret: Vec<u8>,
-    nonce: String,
 }
-
 #[derive(Serialize)]
 struct EncryptResponse {
     ciphertext: Vec<u8>,
@@ -40,6 +44,11 @@ struct DecryptResponse {
     message: String,
 }
 
+#[derive(Serialize)]
+struct ErrorResponse {
+    error: String,
+}
+
 #[post("/create_user_key")]
 fn create_user_key() -> Json<UserKeyResponse> {
     let user_secret: StaticSecret = StaticSecret::random_from_rng(OsRng);
@@ -52,7 +61,18 @@ fn create_user_key() -> Json<UserKeyResponse> {
 }
 
 #[post("/encrypt", format = "json", data = "<request>")]
-fn encrypt(request: Json<EncryptRequest>) -> Json<EncryptResponse> {
+fn encrypt(
+    request: Json<EncryptRequest>,
+) -> Result<Json<EncryptResponse>, BadRequest<Json<ErrorResponse>>> {
+    match request.validate() {
+        Ok(_) => (),
+        Err(e) => {
+            return Err(BadRequest(Json(ErrorResponse {
+                error: format!("Validation errors: {:?}", e),
+            })))
+        }
+    };
+
     let user_secret: [u8; 32] = request.user_secret.clone().try_into().unwrap();
     let other_public_key: [u8; 32] = request.other_public_key.clone().try_into().unwrap();
     let user_secret = StaticSecret::from(user_secret);
@@ -61,7 +81,8 @@ fn encrypt(request: Json<EncryptRequest>) -> Json<EncryptResponse> {
     let shared_secret = user_secret.diffie_hellman(&other_public_key);
 
     let message = request.message.as_bytes();
-    let nonce_bytes = hex::decode(&request.nonce).expect("Invalid hex string for nonce");
+
+    let nonce_bytes = request.nonce.as_bytes();
     let nonce = Nonce::from_slice(&nonce_bytes);
 
     let key = GenericArray::from_slice(shared_secret.as_bytes());
@@ -69,7 +90,7 @@ fn encrypt(request: Json<EncryptRequest>) -> Json<EncryptResponse> {
 
     let ciphertext = cipher.encrypt(nonce, message).expect("encryption failure!");
 
-    Json(EncryptResponse { ciphertext })
+    Ok(Json(EncryptResponse { ciphertext }))
 }
 
 #[post("/decrypt", format = "json", data = "<request>")]
@@ -82,7 +103,7 @@ fn decrypt(request: Json<DecryptRequest>) -> Json<DecryptResponse> {
     let shared_secret = user_secret.diffie_hellman(&other_public_key);
 
     let ciphertext = request.ciphertext.as_slice();
-    let nonce_bytes = hex::decode(&request.nonce).expect("Invalid hex string for nonce");
+    let nonce_bytes = request.nonce.as_bytes();
     let nonce = Nonce::from_slice(&nonce_bytes);
 
     let key = GenericArray::from_slice(shared_secret.as_bytes());
@@ -99,5 +120,7 @@ fn decrypt(request: Json<DecryptRequest>) -> Json<DecryptResponse> {
 
 #[launch]
 fn rocket() -> _ {
-    rocket::build().mount("/", routes![create_user_key, encrypt, decrypt])
+    rocket::build()
+        .mount("/", routes![create_user_key, encrypt, decrypt])
+        .register("/", catchers![rocket_validation::validation_catcher])
 }
