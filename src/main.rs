@@ -1,126 +1,20 @@
 #[macro_use]
 extern crate rocket;
 
-use aes_gcm::aead::{generic_array::GenericArray, Aead, KeyInit, OsRng};
-use aes_gcm::{Aes256Gcm, Nonce};
-use serde::{Deserialize, Serialize};
-
-use rocket::response::status::BadRequest;
-use rocket::serde::json::Json;
-use validator::{Validate, ValidationError};
-use validator_derive::Validate;
-use x25519_dalek::{PublicKey, StaticSecret};
-
-#[derive(Serialize)]
-struct UserKeyResponse {
-    public_key: Vec<u8>,
-    user_secret: Vec<u8>,
-}
-
-#[derive(Debug, Validate, Serialize, Deserialize)]
-#[serde(crate = "rocket::serde")]
-pub struct EncryptRequest {
-    #[validate(length(equal = 1))]
-    nonce: String,
-    message: String,
-    other_public_key: Vec<u8>,
-    user_secret: Vec<u8>,
-}
-#[derive(Serialize)]
-struct EncryptResponse {
-    ciphertext: Vec<u8>,
-}
-
-#[derive(Deserialize)]
-struct DecryptRequest {
-    ciphertext: Vec<u8>,
-    other_public_key: Vec<u8>,
-    user_secret: Vec<u8>,
-    nonce: String,
-}
-
-#[derive(Serialize)]
-struct DecryptResponse {
-    message: String,
-}
-
-#[derive(Serialize)]
-struct ErrorResponse {
-    error: String,
-}
-
-#[post("/create_user_key")]
-fn create_user_key() -> Json<UserKeyResponse> {
-    let user_secret: StaticSecret = StaticSecret::random_from_rng(OsRng);
-    let user_public = PublicKey::from(&user_secret);
-
-    Json(UserKeyResponse {
-        public_key: user_public.as_bytes().to_vec(),
-        user_secret: user_secret.as_bytes().to_vec(),
-    })
-}
-
-#[post("/encrypt", format = "json", data = "<request>")]
-fn encrypt(
-    request: Json<EncryptRequest>,
-) -> Result<Json<EncryptResponse>, BadRequest<Json<ErrorResponse>>> {
-    match request.validate() {
-        Ok(_) => (),
-        Err(e) => {
-            return Err(BadRequest(Json(ErrorResponse {
-                error: format!("Validation errors: {:?}", e),
-            })))
-        }
-    };
-
-    let user_secret: [u8; 32] = request.user_secret.clone().try_into().unwrap();
-    let other_public_key: [u8; 32] = request.other_public_key.clone().try_into().unwrap();
-    let user_secret = StaticSecret::from(user_secret);
-    let other_public_key = PublicKey::from(other_public_key);
-
-    let shared_secret = user_secret.diffie_hellman(&other_public_key);
-
-    let message = request.message.as_bytes();
-
-    let nonce_bytes = request.nonce.as_bytes();
-    let nonce = Nonce::from_slice(&nonce_bytes);
-
-    let key = GenericArray::from_slice(shared_secret.as_bytes());
-    let cipher = Aes256Gcm::new(key);
-
-    let ciphertext = cipher.encrypt(nonce, message).expect("encryption failure!");
-
-    Ok(Json(EncryptResponse { ciphertext }))
-}
-
-#[post("/decrypt", format = "json", data = "<request>")]
-fn decrypt(request: Json<DecryptRequest>) -> Json<DecryptResponse> {
-    let user_secret: [u8; 32] = request.user_secret.clone().try_into().unwrap();
-    let other_public_key: [u8; 32] = request.other_public_key.clone().try_into().unwrap();
-    let user_secret = StaticSecret::from(user_secret);
-    let other_public_key = PublicKey::from(other_public_key);
-
-    let shared_secret = user_secret.diffie_hellman(&other_public_key);
-
-    let ciphertext = request.ciphertext.as_slice();
-    let nonce_bytes = request.nonce.as_bytes();
-    let nonce = Nonce::from_slice(&nonce_bytes);
-
-    let key = GenericArray::from_slice(shared_secret.as_bytes());
-    let cipher = Aes256Gcm::new(key);
-
-    let plaintext = cipher
-        .decrypt(nonce, ciphertext)
-        .expect("decryption failure!");
-
-    Json(DecryptResponse {
-        message: String::from_utf8_lossy(&plaintext).to_string(),
-    })
-}
+mod api;
+mod crypto;
+mod validators;
 
 #[launch]
 fn rocket() -> _ {
     rocket::build()
-        .mount("/", routes![create_user_key, encrypt, decrypt])
-        .register("/", catchers![rocket_validation::validation_catcher])
+        .mount(
+            "/",
+            routes![
+                api::user_key::create_user_key,
+                api::encrypt::encrypt,
+                api::decrypt::decrypt
+            ],
+        )
+        .register("/", catchers![validators::validation::validation_catcher])
 }
