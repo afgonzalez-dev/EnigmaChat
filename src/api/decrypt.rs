@@ -1,3 +1,4 @@
+use log::info;
 use rocket::response::status::BadRequest;
 use rocket::serde::{json::Json, Deserialize, Serialize};
 
@@ -21,15 +22,23 @@ pub struct DecryptResponse {
 pub fn decrypt(
     request: Json<DecryptRequest>,
 ) -> Result<Json<DecryptResponse>, BadRequest<Json<ErrorResponse>>> {
+    info!("Received decryption request");
+
     match decrypt_message(
         &request.ciphertext,
         &request.other_public_key,
         &request.user_secret,
         &request.nonce,
     ) {
-        Ok(message) => Ok(Json(DecryptResponse { message })),
-        Err(e) => Err(BadRequest(Json(ErrorResponse {
-            error: e.to_string(),
-        }))),
+        Ok(message) => {
+            info!("Message decrypted successfully");
+            Ok(Json(DecryptResponse { message }))
+        }
+        Err(e) => {
+            error!("Decryption error: {:?}", e);
+            Err(BadRequest(Json(ErrorResponse {
+                error: e.to_string(),
+            })))
+        }
     }
 }

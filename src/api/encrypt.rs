@@ -1,3 +1,4 @@
+use log::info;
 use rocket::response::status::BadRequest;
 use rocket::serde::{json::Json, Deserialize, Serialize};
 use validator::Validate;
@@ -25,12 +26,15 @@ pub struct EncryptResponse {
 pub fn encrypt(
     request: Json<EncryptRequest>,
 ) -> Result<Json<EncryptResponse>, BadRequest<Json<ErrorResponse>>> {
+    info!("Received encryption request");
+
     match request.validate() {
         Ok(_) => (),
         Err(e) => {
+            error!("Validation error: {:?}", e);
             return Err(BadRequest(Json(ErrorResponse {
                 error: format!("Validation errors: {:?}", e),
-            })))
+            })));
         }
     };
 
@@ -40,9 +44,15 @@ pub fn encrypt(
         &request.other_public_key,
         &request.user_secret,
     ) {
-        Ok(ciphertext) => Ok(Json(EncryptResponse { ciphertext })),
-        Err(e) => Err(BadRequest(Json(ErrorResponse {
-            error: e.to_string(),
-        }))),
+        Ok(ciphertext) => {
+            info!("Message encrypted successfully");
+            Ok(Json(EncryptResponse { ciphertext }))
+        }
+        Err(e) => {
+            error!("Encryption error: {:?}", e);
+            Err(BadRequest(Json(ErrorResponse {
+                error: e.to_string(),
+            })))
+        }
     }
 }

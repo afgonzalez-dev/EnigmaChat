@@ -8,6 +8,9 @@ mod validators;
 
 #[launch]
 fn rocket() -> _ {
+    env_logger::init();
+    info!("Starting the Rocket server...");
+
     rocket::build()
         .mount(
             "/",
