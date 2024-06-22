@@ -1,0 +1,12 @@
+[package]
+name = "EnigmaChat"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+aes-gcm = "0.10.1"
+hex = "0.4"
+rand_core = {version = "0.6.4", features = ["getrandom"]}
+rocket = {version = "0.5.1", features = ["json"]}
+serde ={ version = "1", features = ["derive"] }
+x25519-dalek = {version = "=2.0.1", features = ["static_secrets"]}
