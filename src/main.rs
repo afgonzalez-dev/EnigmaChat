@@ -3,6 +3,7 @@ extern crate rocket;
 
 mod api;
 mod crypto;
+mod errors;
 mod validators;
 
 #[launch]

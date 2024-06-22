@@ -34,12 +34,15 @@ pub fn encrypt(
         }
     };
 
-    let ciphertext = encrypt_message(
+    match encrypt_message(
         request.nonce.clone(),
         &request.message,
         &request.other_public_key,
         &request.user_secret,
-    );
-
-    Ok(Json(EncryptResponse { ciphertext }))
+    ) {
+        Ok(ciphertext) => Ok(Json(EncryptResponse { ciphertext })),
+        Err(e) => Err(BadRequest(Json(ErrorResponse {
+            error: e.to_string(),
+        }))),
+    }
 }
